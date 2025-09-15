@@ -12,6 +12,21 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import backgroundImage from "../image/background.jpeg";
+
+const SHOPS = [
+ "හතරමන් හන්දිය",
+  "පොල හන්දිය",
+  "කොට්ටාව",
+  "හොමාගම",
+  "හබරකඩ",
+  "AAI- Three wheel",
+  "YW- Three wheel",
+  "ABD- Three wheel",
+  "ABB- Three wheel",
+  "AAQ- Three wheel",
+  "S M බේකර්ස්",
+];
 
 // Toast notification component
 const Toast = ({ toast, onRemove, isDarkMode }) => {
@@ -41,8 +56,8 @@ const Toast = ({ toast, onRemove, isDarkMode }) => {
       default:
         return `${baseStyles} ${
           isDarkMode 
-            ? "bg-primary-900/30 border-primary-700/50 text-primary-300" 
-            : "bg-primary-50 border-primary-200 text-primary-800"
+            ? "bg-blue-900/30 border-blue-700/50 text-blue-300" 
+            : "bg-blue-50 border-blue-200 text-blue-800"
         }`;
     }
   };
@@ -92,7 +107,7 @@ const Toast = ({ toast, onRemove, isDarkMode }) => {
 
 export default function AddPricePage({ onNavigate }) {
   // Dark mode state - using React state instead of localStorage
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
@@ -116,7 +131,7 @@ export default function AddPricePage({ onNavigate }) {
   // State management
 
   const [priceData, setPriceData] = useState([]);
-  const [itemsData, setItemsData] = useState([]);
+  const [shopItemsData, setShopItemsData] = useState([]);
   const [editingPrices, setEditingPrices] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -126,15 +141,18 @@ export default function AddPricePage({ onNavigate }) {
   const [editingItemId, setEditingItemId] = useState(null);
   const [editingItemName, setEditingItemName] = useState("");
 
-  // Beverage-related state
-  const [beverageData, setBeverageData] = useState([]);
-  const [beveragePrices, setBeveragePrices] = useState({});
-  const [editingBeveragePrices, setEditingBeveragePrices] = useState({});
-  const [newBeverageName, setNewBeverageName] = useState("");
+  const [selectedShop, setSelectedShop] = useState(() => {
+  return localStorage.getItem("selectedShop") || SHOPS[0];
+});
+
+useEffect(() => {
+  localStorage.setItem("selectedShop", selectedShop);
+}, [selectedShop]);
+
 
   // Firestore collection references
   const pricesRef = collection(firestore, "prices");
-  const itemsRef = collection(firestore, "items");
+  const shopItemsRef = collection(firestore, "shopItems");
 
   // Navigation function with fallback
   const navigate = useNavigate();
@@ -143,54 +161,23 @@ export default function AddPricePage({ onNavigate }) {
     navigate(page);
   };
 
-  // Get all bakery items (sorted by order field)
-  const getBakeryItems = useCallback(() => {
-    return itemsData
+  // Get bakery items for selected shop (sorted by order field)
+  const getBakeryItemsForShop = useCallback((shop) => {
+    return shopItemsData
+      .filter(item => item.shop === shop)
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map(item => ({
         name: item.itemName,
         id: item.id,
         order: item.order || 0
       }));
-  }, [itemsData]);
+  }, [shopItemsData]);
 
   const BAKERY_ITEMS = useMemo(() => {
-    return getBakeryItems();
-  }, [getBakeryItems]);
+    return getBakeryItemsForShop(selectedShop);
+  }, [getBakeryItemsForShop, selectedShop]);
 
-  // Get all beverage items (from beverageData)
-  const getBeverageItems = useCallback(() => {
-    // Get unique beverages by itemName to avoid duplicates
-    const uniqueBeverageMap = new Map();
-    beverageData.forEach(item => {
-      if (item.itemName && !uniqueBeverageMap.has(item.itemName)) {
-        uniqueBeverageMap.set(item.itemName, item);
-      }
-    });
-    
-    const uniqueBeverages = Array.from(uniqueBeverageMap.keys());
-    console.log("Unique beverages found:", uniqueBeverages);
-    
-    return uniqueBeverages.map((name, index) => ({
-      name: name,
-      id: `beverage-${name.toLowerCase().replace(/\s+/g, '-')}-${index}`
-    }));
-  }, [beverageData]);
-
-  // Beverage items (dynamic from data)
-  const BEVERAGE_ITEMS = useMemo(() => {
-    const dynamicBeverages = getBeverageItems();
-    // If no data yet, return default items
-    if (dynamicBeverages.length === 0) {
-      return [
-        { name: "Nescafe", id: "nescafe" },
-        { name: "Nestea", id: "nestea" }
-      ];
-    }
-    return dynamicBeverages;
-  }, [getBeverageItems]);
-
-  // Fetch price data and items from Firebase
+  // Fetch price data and shop items from Firebase
   const fetchPriceData = useCallback(async () => {
     try {
       setLoading(true);
@@ -202,33 +189,22 @@ export default function AddPricePage({ onNavigate }) {
         ...doc.data(),
       }));
 
-      // Fetch items
-      const itemsSnapshot = await getDocs(itemsRef);
-      const items = itemsSnapshot.docs.map((doc) => ({
+      // Fetch shop items
+      const shopItemsSnapshot = await getDocs(shopItemsRef);
+      const shopItems = shopItemsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
 
       setPriceData(priceItems);
-      setItemsData(items);
-      
-      // Fetch beverage data
-      const beverageQuery = query(collection(firestore, "beverageInventory"));
-      const beverageSnapshot = await getDocs(beverageQuery);
-      const beverages = beverageSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setBeverageData(beverages);
-      
+      setShopItemsData(shopItems);
       console.log("Fetched price data:", priceItems.length, "items");
-      console.log("Fetched items:", items.length, "custom items");
-      console.log("Fetched beverage data:", beverages.length, "beverages");
+      console.log("Fetched shop items:", shopItems.length, "custom items");
     } catch (error) {
       console.error("Error fetching price data:", error);
       addToast("Error loading price data. Please try again.", 'error');
       setPriceData([]);
-      setItemsData([]);
+      setShopItemsData([]);
     } finally {
       setLoading(false);
     }
@@ -243,19 +219,19 @@ export default function AddPricePage({ onNavigate }) {
   const getItemPrice = useCallback(
     (itemName) => {
       const priceRecord = priceData.find(
-        (price) => price.itemName === itemName
+        (price) => price.itemName === itemName && price.shop === selectedShop
       );
       return priceRecord
         ? { price: parseFloat(priceRecord.price) || 0, id: priceRecord.id }
         : { price: null, id: null };
     },
-    [priceData]
+    [priceData, selectedShop]
   );
 
   // Handle price editing
   const handlePriceEdit = useCallback(
     (itemName, value) => {
-      const priceKey = itemName;
+      const priceKey = `${selectedShop}_${itemName}`;
       const numValue = parseFloat(value) || 0;
 
       setEditingPrices((prev) => {
@@ -265,13 +241,14 @@ export default function AddPricePage({ onNavigate }) {
         } else {
           updated[priceKey] = {
             itemName,
+            shop: selectedShop,
             price: numValue,
           };
         }
         return updated;
       });
     },
-    []
+    [selectedShop]
   );
 
   // Save prices to Firebase
@@ -289,11 +266,12 @@ export default function AddPricePage({ onNavigate }) {
       console.log("Saving", pricesToSave.length, "price changes...");
 
       const savePromises = pricesToSave.map(async ([priceKey, priceData]) => {
-        const { itemName, price } = priceData;
+        const { itemName, shop, price } = priceData;
         const existingPrice = getItemPrice(itemName);
 
         const dataToSave = {
           itemName,
+          shop,
           price: parseFloat(price),
           updatedAt: new Date().toISOString(),
         };
@@ -344,7 +322,7 @@ export default function AddPricePage({ onNavigate }) {
     async (itemName) => {
       if (
         !window.confirm(
-          `Are you sure you want to delete the price for "${itemName}"?`
+          `Are you sure you want to delete the price for "${itemName}" in ${selectedShop}?`
         )
       ) {
         return;
@@ -362,7 +340,7 @@ export default function AddPricePage({ onNavigate }) {
         addToast("Error deleting price. Please try again.", 'error');
       }
     },
-    [getItemPrice, fetchPriceData, addToast]
+    [selectedShop, getItemPrice, fetchPriceData, addToast]
   );
 
   // Delete item
@@ -370,15 +348,15 @@ export default function AddPricePage({ onNavigate }) {
     async (itemId, itemName) => {
       if (
         !window.confirm(
-          `Are you sure you want to delete "${itemName}"? This will also delete its price if it exists.`
+          `Are you sure you want to delete "${itemName}" from ${selectedShop}? This will also delete its price if it exists.`
         )
       ) {
         return;
       }
 
       try {
-        // Delete the item from items collection
-        await deleteDoc(doc(firestore, "items", itemId));
+        // Delete the item from shopItems collection
+        await deleteDoc(doc(firestore, "shopItems", itemId));
         
         // Also delete its price if it exists
         const existingPrice = getItemPrice(itemName);
@@ -387,13 +365,13 @@ export default function AddPricePage({ onNavigate }) {
         }
 
         await fetchPriceData();
-        addToast(`"${itemName}" deleted successfully!`, 'success');
+        addToast(`"${itemName}" deleted successfully from ${selectedShop}!`, 'success');
       } catch (error) {
         console.error("Error deleting item:", error);
         addToast("Error deleting item. Please try again.", 'error');
       }
     },
-    [getItemPrice, fetchPriceData, addToast]
+    [selectedShop, getItemPrice, fetchPriceData, addToast]
   );
 
   // Start editing item name
@@ -419,24 +397,24 @@ export default function AddPricePage({ onNavigate }) {
       return;
     }
 
-    // Check if the new name already exists
-    const currentItems = getBakeryItems();
-    const nameExists = currentItems.some(item => 
+    // Check if the new name already exists for this shop
+    const currentShopItems = getBakeryItemsForShop(selectedShop);
+    const nameExists = currentShopItems.some(item => 
       item.name.toLowerCase() === editingItemName.trim().toLowerCase() && item.id !== editingItemId
     );
 
     if (nameExists) {
-      addToast("An item with this name already exists", 'error');
+      addToast("An item with this name already exists for this shop", 'error');
       return;
     }
 
     try {
       // Get the original item name before updating
-      const originalItemData = itemsData.find(item => item.id === editingItemId);
+      const originalItemData = shopItemsData.find(item => item.id === editingItemId);
       const originalItemName = originalItemData?.itemName;
 
-      // Update the item name in items collection
-      const itemRef = doc(firestore, "items", editingItemId);
+      // Update the item name in shopItems collection
+      const itemRef = doc(firestore, "shopItems", editingItemId);
       await updateDoc(itemRef, {
         itemName: editingItemName.trim(),
         updatedAt: new Date().toISOString()
@@ -462,7 +440,7 @@ export default function AddPricePage({ onNavigate }) {
       console.error("Error updating item name:", error);
       addToast("Error updating item name. Please try again.", 'error');
     }
-  }, [editingItemId, editingItemName, getBakeryItems, itemsData, getItemPrice, fetchPriceData, addToast]);
+  }, [editingItemId, editingItemName, selectedShop, getBakeryItemsForShop, shopItemsData, getItemPrice, fetchPriceData, addToast]);
 
   // Add new item to shop
   const handleAddItem = useCallback(async () => {
@@ -471,19 +449,20 @@ export default function AddPricePage({ onNavigate }) {
       return;
     }
 
-    const currentItems = getBakeryItems();
-    if (currentItems.some(item => item.name === newItemName.trim())) {
-      addToast("This item already exists", 'error');
+    const currentShopItems = getBakeryItemsForShop(selectedShop);
+    if (currentShopItems.some(item => item.name === newItemName.trim())) {
+      addToast("This item already exists for this shop", 'error');
       return;
     }
 
     try {
-      // Get the highest order number
-      const maxOrder = currentItems.length > 0 
-        ? Math.max(...currentItems.map(item => item.order)) 
+      // Get the highest order number for the current shop
+      const maxOrder = currentShopItems.length > 0 
+        ? Math.max(...currentShopItems.map(item => item.order)) 
         : 0;
 
-      await addDoc(itemsRef, {
+      await addDoc(shopItemsRef, {
+        shop: selectedShop,
         itemName: newItemName.trim(),
         order: maxOrder + 1,
         createdAt: new Date().toISOString(),
@@ -491,60 +470,12 @@ export default function AddPricePage({ onNavigate }) {
 
       setNewItemName("");
       await fetchPriceData(); // Refresh data to get the new item
-      addToast(`Item "${newItemName.trim()}" added successfully`, 'success');
+      addToast(`Item "${newItemName.trim()}" added to ${selectedShop}`, 'success');
     } catch (error) {
       console.error("Error adding item:", error);
       addToast("Failed to add item. Please try again.", 'error');
     }
-  }, [newItemName, getBakeryItems, fetchPriceData, addToast]);
-
-  // Add new beverage item
-  const handleAddBeverage = useCallback(async () => {
-    if (!newBeverageName.trim()) {
-      addToast("Please enter a beverage name", 'warning');
-      return;
-    }
-
-    const currentBeverages = getBeverageItems();
-    console.log("Current beverages:", currentBeverages.map(b => b.name));
-    console.log("Trying to add:", newBeverageName.trim());
-    
-    // Check for duplicates (case-insensitive)
-    const beverageExists = currentBeverages.some(item => 
-      item.name.toLowerCase().trim() === newBeverageName.trim().toLowerCase()
-    );
-    
-    // Also check raw beverage data for duplicates
-    const rawBeverageExists = beverageData.some(item => 
-      item.itemName && item.itemName.toLowerCase().trim() === newBeverageName.trim().toLowerCase()
-    );
-    
-    if (beverageExists || rawBeverageExists) {
-      addToast(`"${newBeverageName.trim()}" already exists`, 'error');
-      console.log("Duplicate found - not adding");
-      return;
-    }
-
-    try {
-      console.log("Adding beverage to Firebase:", newBeverageName.trim());
-      // Add to beverageInventory collection
-      const docRef = await addDoc(collection(firestore, "beverageInventory"), {
-        itemName: newBeverageName.trim(),
-        previousDayCount: 0,
-        todayCount: 0,
-        date: new Date().toISOString().split('T')[0], // Today's date
-        createdAt: new Date().toISOString(),
-      });
-      
-      console.log("Beverage added with ID:", docRef.id);
-      setNewBeverageName("");
-      await fetchPriceData(); // Refresh data to get the new beverage
-      addToast(`Beverage "${newBeverageName.trim()}" added successfully`, 'success');
-    } catch (error) {
-      console.error("Error adding beverage:", error);
-      addToast("Failed to add beverage. Please try again.", 'error');
-    }
-  }, [newBeverageName, getBeverageItems, beverageData, fetchPriceData, addToast]);
+  }, [newItemName, selectedShop, getBakeryItemsForShop, fetchPriceData, addToast]);
 
   // Move item up in the list - ENHANCED VERSION
   const handleMoveItemUp = useCallback(async (itemName) => {
@@ -556,14 +487,15 @@ export default function AddPricePage({ onNavigate }) {
     try {
       setReordering(true);
       console.log("=== MOVE UP DEBUG ===");
+      console.log("Selected shop:", selectedShop);
       console.log("Item to move:", itemName);
       
-      // Get all items (not filtered)
-      const allItems = getBakeryItems();
-      console.log("All items:", allItems.map(item => `${item.name} (order: ${item.order})`));
+      // Get all items for the current shop (not filtered)
+      const allShopItems = getBakeryItemsForShop(selectedShop);
+      console.log("All shop items:", allShopItems.map(item => `${item.name} (order: ${item.order})`));
       
       // Find the current item index in the complete list
-      const currentIndex = allItems.findIndex(item => item.name === itemName);
+      const currentIndex = allShopItems.findIndex(item => item.name === itemName);
       console.log("Current index:", currentIndex);
       
       if (currentIndex <= 0) {
@@ -572,18 +504,18 @@ export default function AddPricePage({ onNavigate }) {
       }
 
       // Get the items to swap
-      const currentItem = allItems[currentIndex];
-      const previousItem = allItems[currentIndex - 1];
+      const currentItem = allShopItems[currentIndex];
+      const previousItem = allShopItems[currentIndex - 1];
 
       console.log("Current item:", currentItem);
       console.log("Previous item:", previousItem);
 
-      // Find the full item data from itemsData
-      const currentItemData = itemsData.find(item => 
-        item.itemName === currentItem.name
+      // Find the full item data from shopItemsData
+      const currentItemData = shopItemsData.find(item => 
+        item.itemName === currentItem.name && item.shop === selectedShop
       );
-      const previousItemData = itemsData.find(item => 
-        item.itemName === previousItem.name
+      const previousItemData = shopItemsData.find(item => 
+        item.itemName === previousItem.name && item.shop === selectedShop
       );
 
       console.log("Current item DB data:", currentItemData);
@@ -641,7 +573,7 @@ export default function AddPricePage({ onNavigate }) {
         console.log("Reordering state reset");
       }, 1000);
     }
-  }, [getBakeryItems, itemsData, fetchPriceData, reordering, addToast]);
+  }, [selectedShop, getBakeryItemsForShop, shopItemsData, fetchPriceData, reordering, addToast]);
 
   // Move item down in the list - ENHANCED VERSION
   const handleMoveItemDown = useCallback(async (itemName) => {
@@ -653,34 +585,35 @@ export default function AddPricePage({ onNavigate }) {
     try {
       setReordering(true);
       console.log("=== MOVE DOWN DEBUG ===");
+      console.log("Selected shop:", selectedShop);
       console.log("Item to move:", itemName);
       
-      // Get all items (not filtered)
-      const allItems = getBakeryItems();
-      console.log("All items:", allItems.map(item => `${item.name} (order: ${item.order})`));
+      // Get all items for the current shop (not filtered)
+      const allShopItems = getBakeryItemsForShop(selectedShop);
+      console.log("All shop items:", allShopItems.map(item => `${item.name} (order: ${item.order})`));
       
       // Find the current item index in the complete list
-      const currentIndex = allItems.findIndex(item => item.name === itemName);
+      const currentIndex = allShopItems.findIndex(item => item.name === itemName);
       console.log("Current index:", currentIndex);
       
-      if (currentIndex >= allItems.length - 1 || currentIndex === -1) {
+      if (currentIndex >= allShopItems.length - 1 || currentIndex === -1) {
         console.log("Item is already at the bottom or not found");
         return;
       }
 
       // Get the items to swap
-      const currentItem = allItems[currentIndex];
-      const nextItem = allItems[currentIndex + 1];
+      const currentItem = allShopItems[currentIndex];
+      const nextItem = allShopItems[currentIndex + 1];
 
       console.log("Current item:", currentItem);
       console.log("Next item:", nextItem);
 
-      // Find the full item data from itemsData
-      const currentItemData = itemsData.find(item => 
-        item.itemName === currentItem.name
+      // Find the full item data from shopItemsData
+      const currentItemData = shopItemsData.find(item => 
+        item.itemName === currentItem.name && item.shop === selectedShop
       );
-      const nextItemData = itemsData.find(item => 
-        item.itemName === nextItem.name
+      const nextItemData = shopItemsData.find(item => 
+        item.itemName === nextItem.name && item.shop === selectedShop
       );
 
       console.log("Current item DB data:", currentItemData);
@@ -738,107 +671,7 @@ export default function AddPricePage({ onNavigate }) {
         console.log("Reordering state reset");
       }, 1000);
     }
-  }, [getBakeryItems, itemsData, fetchPriceData, reordering, addToast]);
-
-  // Beverage-specific functions
-  const getBeveragePrice = useCallback(
-    (itemName) => {
-      const priceRecord = priceData.find(
-        (price) => price.itemName === itemName
-      );
-      return priceRecord
-        ? { price: parseFloat(priceRecord.price) || 0, id: priceRecord.id }
-        : { price: null, id: null };
-    },
-    [priceData]
-  );
-
-  const handleBeveragePriceEdit = useCallback(
-    (itemName, value) => {
-      const priceKey = itemName;
-      
-      if (value === "" || isNaN(parseFloat(value))) {
-        setEditingBeveragePrices((prev) => {
-          const updated = { ...prev };
-          delete updated[priceKey];
-          return updated;
-        });
-      } else {
-        setEditingBeveragePrices((prev) => ({
-          ...prev,
-          [priceKey]: {
-            itemName,
-            price: value,
-          },
-        }));
-      }
-    },
-    []
-  );
-
-  const handleSaveBeveragePrices = useCallback(async () => {
-    try {
-      setSubmitting(true);
-
-      const pricesToSave = Object.entries(editingBeveragePrices);
-
-      if (pricesToSave.length === 0) {
-        addToast("No beverage price changes to save.", 'warning');
-        return;
-      }
-
-      console.log("Saving", pricesToSave.length, "beverage price changes...");
-
-      const savePromises = pricesToSave.map(async ([priceKey, priceData]) => {
-        const { itemName, price } = priceData;
-        const existingPrice = getBeveragePrice(itemName);
-
-        const dataToSave = {
-          itemName,
-          price: parseFloat(price),
-          updatedAt: new Date().toISOString(),
-        };
-
-        try {
-          if (existingPrice.id) {
-            // Update existing price
-            const docRef = doc(firestore, "prices", existingPrice.id);
-            await updateDoc(docRef, dataToSave);
-            console.log("Updated beverage price for", itemName);
-          } else {
-            // Create new price
-            await addDoc(pricesRef, {
-              ...dataToSave,
-              createdAt: new Date().toISOString(),
-            });
-            console.log("Created new beverage price for", itemName);
-          }
-        } catch (itemError) {
-          console.error(`Error saving beverage price for ${itemName}:`, itemError);
-          throw itemError;
-        }
-      });
-
-      await Promise.all(savePromises);
-
-      // Clear editing state and refresh data
-      setEditingBeveragePrices({});
-      await fetchPriceData();
-
-      addToast(`All ${pricesToSave.length} beverage prices saved successfully!`, 'success');
-    } catch (error) {
-      console.error("Error saving beverage prices:", error);
-      const errorMessage =
-        error.code === "permission-denied"
-          ? "Permission denied. Please check your Firebase permissions."
-          : error.code === "unavailable"
-          ? "Firebase service temporarily unavailable. Please try again."
-          : `Failed to save beverage prices: ${error.message}`;
-      addToast(errorMessage, 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [editingBeveragePrices, getBeveragePrice, fetchPriceData, addToast]);
+  }, [selectedShop, getBakeryItemsForShop, shopItemsData, fetchPriceData, reordering, addToast]);
 
   // Filter items based on search query
   const filteredItems = BAKERY_ITEMS.filter((item) =>
@@ -849,20 +682,28 @@ export default function AddPricePage({ onNavigate }) {
   const totalItemsWithPrices = BAKERY_ITEMS.filter(
     (item) => getItemPrice(item.name).price !== null
   ).length;
-  const totalBeveragesWithPrices = BEVERAGE_ITEMS.filter(
-    (item) => getBeveragePrice(item.name).price !== null
-  ).length;
   const totalEditingPrices = Object.keys(editingPrices).length;
-  const totalEditingBeveragePrices = Object.keys(editingBeveragePrices).length;
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-300 ${
-        isDarkMode
-          ? "bg-gradient-to-br from-primary-900 via-secondary-900 to-accent-900"
-          : "bg-gradient-to-br from-primary-50 via-secondary-50 to-accent-50"
-      }`}
+      className="min-h-screen transition-colors duration-300"
+      style={{
+        backgroundImage: `url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
     >
+      {/* Gradient overlay for better content visibility */}
+      <div
+        className={`absolute inset-0 transition-colors duration-300 ${
+          isDarkMode
+            ? "bg-gradient-to-br from-gray-900/80 via-slate-900/85 to-gray-800/80"
+            : "bg-gradient-to-br from-slate-50/85 via-purple-50/90 to-indigo-100/85"
+        }`}
+      ></div>
+      <div className={`relative z-10 ${isDarkMode ? "text-white" : "text-gray-900"}`}>
       {/* Toast Notifications Container */}
       <div className="toast-container">
         {toasts.map((toast, index) => (
@@ -892,8 +733,8 @@ export default function AddPricePage({ onNavigate }) {
             <h1
               className={`text-2xl md:text-3xl font-bold bg-gradient-to-r ${
                 isDarkMode
-                  ? "from-primary-400 to-accent-400"
-                  : "from-primary-600 to-accent-600"
+                  ? "from-purple-400 to-pink-400"
+                  : "from-purple-600 to-pink-600"
               } bg-clip-text text-transparent`}
             >
               💰 Price Management
@@ -937,7 +778,7 @@ export default function AddPricePage({ onNavigate }) {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => navigateToPage("/selection")}
-              className="px-4 py-2 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white rounded-md transition-all duration-200 font-medium shadow-md hover:shadow-lg text-sm"
+              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-md transition-all duration-200 font-medium shadow-md hover:shadow-lg text-sm"
             >
               📋 Selection Page
             </button>
@@ -950,7 +791,7 @@ export default function AddPricePage({ onNavigate }) {
           </div>
         </section>
 
-        {/* Search and Controls */}
+        {/* Shop Selection and Controls */}
         <section
           className={`backdrop-blur-sm rounded-lg shadow-md border p-4 mb-4 transition-colors duration-300 ${
             isDarkMode
@@ -963,10 +804,37 @@ export default function AddPricePage({ onNavigate }) {
               isDarkMode ? "text-slate-200" : "text-gray-800"
             }`}
           >
-            🔧 Search & Controls
+            🏪 Shop Selection & Controls
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <div>
+              <label
+                htmlFor="shop-select"
+                className={`block text-xs font-medium mb-1 ${
+                  isDarkMode ? "text-slate-300" : "text-gray-700"
+                }`}
+              >
+                Shop:
+              </label>
+              <select
+                id="shop-select"
+                value={selectedShop}
+                onChange={(e) => setSelectedShop(e.target.value)}
+                className={`w-full border rounded-md px-2 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${
+                  isDarkMode
+                    ? "bg-gray-700/70 border-gray-600 text-slate-200"
+                    : "bg-white border-gray-300 text-gray-700"
+                }`}
+              >
+                {SHOPS.map((shop) => (
+                  <option key={shop} value={shop}>
+                    {shop}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label
                 htmlFor="search-items"
@@ -1013,7 +881,7 @@ export default function AddPricePage({ onNavigate }) {
           {/* Add New Item Section */}
           <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             <h3 className={`text-sm font-semibold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
-              ➕ Add New Item
+              ➕ Add New Item to {selectedShop}
             </h3>
             <div className="flex gap-2">
               <input
@@ -1046,38 +914,37 @@ export default function AddPricePage({ onNavigate }) {
         <section
           className={`backdrop-blur-sm rounded-lg shadow-md border p-4 mb-4 transition-colors duration-300 ${
             isDarkMode
-              ? "bg-gradient-to-r from-accent-900/40 to-pink-900/40 border-accent-700/30"
-              : "bg-gradient-to-r from-accent-50/60 to-pink-50/60 border-accent-200/30"
+              ? "bg-gradient-to-r from-purple-900/40 to-pink-900/40 border-purple-700/30"
+              : "bg-gradient-to-r from-purple-50/60 to-pink-50/60 border-purple-200/30"
           }`}
         >
           <h2
             className={`text-base font-semibold mb-3 flex items-center gap-2 ${
-              isDarkMode ? "text-accent-300" : "text-accent-800"
+              isDarkMode ? "text-purple-300" : "text-purple-800"
             }`}
           >
-            📊 Price Coverage Statistics
+            📊 Price Coverage Statistics - {selectedShop}
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            {/* Bakery Items Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div
               className={`text-center p-3 rounded-md transition-colors duration-300 ${
-                isDarkMode ? "bg-primary-900/30" : "bg-primary-50"
+                isDarkMode ? "bg-blue-900/30" : "bg-blue-50"
               }`}
             >
               <div
                 className={`text-lg font-bold ${
-                  isDarkMode ? "text-primary-400" : "text-primary-600"
+                  isDarkMode ? "text-blue-400" : "text-blue-600"
                 }`}
               >
                 {BAKERY_ITEMS.length}
               </div>
               <div
                 className={`text-xs ${
-                  isDarkMode ? "text-primary-300" : "text-primary-700"
+                  isDarkMode ? "text-blue-300" : "text-blue-700"
                 }`}
               >
-                Bakery Items
+                Total Items
               </div>
             </div>
 
@@ -1098,7 +965,7 @@ export default function AddPricePage({ onNavigate }) {
                   isDarkMode ? "text-green-300" : "text-green-700"
                 }`}
               >
-                Bakery w/ Prices
+                Items with Prices
               </div>
             </div>
 
@@ -1119,50 +986,7 @@ export default function AddPricePage({ onNavigate }) {
                   isDarkMode ? "text-red-300" : "text-red-700"
                 }`}
               >
-                Bakery Missing
-              </div>
-            </div>
-
-            {/* Beverage Statistics */}
-            <div
-              className={`text-center p-3 rounded-md transition-colors duration-300 ${
-                isDarkMode ? "bg-orange-900/30" : "bg-orange-50"
-              }`}
-            >
-              <div
-                className={`text-lg font-bold ${
-                  isDarkMode ? "text-orange-400" : "text-orange-600"
-                }`}
-              >
-                {BEVERAGE_ITEMS.length}
-              </div>
-              <div
-                className={`text-xs ${
-                  isDarkMode ? "text-orange-300" : "text-orange-700"
-                }`}
-              >
-                Beverages
-              </div>
-            </div>
-
-            <div
-              className={`text-center p-3 rounded-md transition-colors duration-300 ${
-                isDarkMode ? "bg-purple-900/30" : "bg-purple-50"
-              }`}
-            >
-              <div
-                className={`text-lg font-bold ${
-                  isDarkMode ? "text-purple-400" : "text-purple-600"
-                }`}
-              >
-                {totalBeveragesWithPrices}
-              </div>
-              <div
-                className={`text-xs ${
-                  isDarkMode ? "text-purple-300" : "text-purple-700"
-                }`}
-              >
-                Beverages w/ Prices
+                Missing Prices
               </div>
             </div>
 
@@ -1176,7 +1000,7 @@ export default function AddPricePage({ onNavigate }) {
                   isDarkMode ? "text-yellow-400" : "text-yellow-600"
                 }`}
               >
-                {totalEditingPrices + totalEditingBeveragePrices}
+                {totalEditingPrices}
               </div>
               <div
                 className={`text-xs ${
@@ -1236,7 +1060,7 @@ export default function AddPricePage({ onNavigate }) {
                 isDarkMode ? "text-slate-200" : "text-gray-800"
               }`}
             >
-              💰 Price Table
+              💰 Price Table - {selectedShop}
             </h2>
             <p
               className={`text-xs mt-1 ${
@@ -1261,8 +1085,8 @@ export default function AddPricePage({ onNavigate }) {
                 <span
                   className={`ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                     isDarkMode
-                      ? "bg-primary-900/50 text-primary-300"
-                      : "bg-primary-100 text-primary-800"
+                      ? "bg-blue-900/50 text-blue-300"
+                      : "bg-blue-100 text-blue-800"
                   }`}
                 >
                   🔄 Reordering...
@@ -1337,7 +1161,7 @@ export default function AddPricePage({ onNavigate }) {
                           isDarkMode ? "text-slate-400" : "text-slate-500"
                         }`}
                       >
-                        {searchQuery ? `No items found matching "${searchQuery}"` : `No items found`}
+                        {searchQuery ? `No items found matching "${searchQuery}"` : `No items found for ${selectedShop}`}
                       </div>
                     </td>
                   </tr>
@@ -1347,7 +1171,7 @@ export default function AddPricePage({ onNavigate }) {
                     const itemId = item.id;
                     const { price: currentPrice, id: priceId } =
                       getItemPrice(itemName);
-                    const priceKey = itemName;
+                    const priceKey = `${selectedShop}_${itemName}`;
                     const editingPrice = editingPrices[priceKey];
                     const hasUnsavedChanges = !!editingPrice;
 
@@ -1576,376 +1400,6 @@ export default function AddPricePage({ onNavigate }) {
           </div>
         </section>
 
-        {/* Beverage Price Table */}
-        <section
-          className={`backdrop-blur-sm rounded-lg shadow-md border overflow-hidden transition-colors duration-300 mb-4 ${
-            isDarkMode
-              ? "bg-gradient-to-r from-orange-900/60 to-blue-900/60 border-purple-700/30"
-              : "bg-gradient-to-r from-orange-50/60 to-blue-50/60 border-purple-200/30"
-          }`}
-        >
-          <div
-            className={`p-3 border-b flex justify-between items-center ${
-              isDarkMode ? "border-purple-700" : "border-purple-200"
-            }`}
-          >
-            <div>
-              <h2
-                className={`text-base font-semibold flex items-center gap-2 ${
-                  isDarkMode ? "text-purple-200" : "text-purple-800"
-                }`}
-              >
-                🥤 Beverage Prices
-              </h2>
-              <p
-                className={`text-xs mt-1 ${
-                  isDarkMode ? "text-purple-400" : "text-purple-600"
-                }`}
-              >
-                Manage prices for {BEVERAGE_ITEMS.length} beverages
-                {totalEditingBeveragePrices > 0 && (
-                  <span
-                    className={`ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      isDarkMode
-                        ? "bg-yellow-900/50 text-yellow-300"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {totalEditingBeveragePrices} unsaved changes
-                  </span>
-                )}
-              </p>
-            </div>
-            
-            <div className="flex gap-2 items-center">
-              {totalEditingBeveragePrices > 0 && (
-                <button
-                  onClick={handleSaveBeveragePrices}
-                  disabled={submitting}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    submitting
-                      ? isDarkMode
-                        ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : isDarkMode
-                      ? "bg-purple-600 hover:bg-purple-500 text-white"
-                      : "bg-purple-500 hover:bg-purple-600 text-white"
-                  }`}
-                >
-                  {submitting ? "Saving..." : `Save ${totalEditingBeveragePrices} Changes`}
-                </button>
-              )}
-              
-              {/* <button
-                onClick={() => {
-                  const addSection = document.getElementById('add-beverage-section');
-                  if (addSection) {
-                    addSection.scrollIntoView({ behavior: 'smooth' });
-                    document.getElementById('new-beverage-input')?.focus();
-                  }
-                }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  isDarkMode
-                    ? "bg-orange-600 hover:bg-orange-500 text-white"
-                    : "bg-orange-500 hover:bg-orange-600 text-white"
-                }`}
-              >
-                ➕ Add Beverage
-              </button> */}
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead
-                className={`sticky top-0 transition-colors duration-300 ${
-                  isDarkMode ? "bg-purple-800" : "bg-purple-100"
-                }`}
-              >
-                <tr>
-                  <th
-                    className={`px-3 py-3 text-left text-xs font-semibold min-w-[200px] ${
-                      isDarkMode ? "text-purple-300" : "text-purple-700"
-                    }`}
-                  >
-                    Beverage Item
-                  </th>
-                  <th
-                    className={`px-3 py-3 text-center text-xs font-semibold min-w-[120px] ${
-                      isDarkMode ? "text-purple-300" : "text-purple-700"
-                    }`}
-                  >
-                    Current Price (Rs.)
-                  </th>
-                  <th
-                    className={`px-3 py-3 text-center text-xs font-semibold min-w-[150px] ${
-                      isDarkMode ? "text-purple-300" : "text-purple-700"
-                    }`}
-                  >
-                    Set New Price (Rs.)
-                  </th>
-                  <th
-                    className={`px-3 py-3 text-center text-xs font-semibold min-w-[100px] ${
-                      isDarkMode ? "text-purple-300" : "text-purple-700"
-                    }`}
-                  >
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody
-                className={`divide-y transition-colors duration-300 ${
-                  isDarkMode ? "divide-purple-700" : "divide-purple-200"
-                }`}
-              >
-                {BEVERAGE_ITEMS.map((beverage) => {
-                  const { price: currentPrice, id: priceId } = getBeveragePrice(beverage.name);
-                  const editingPrice = editingBeveragePrices[beverage.name];
-                  const hasChanges = editingPrice !== undefined;
-                  const isNescafe = beverage.name === "Nescafe";
-                  const isHotDrink = beverage.name.toLowerCase().includes('coffee') || 
-                                   beverage.name.toLowerCase().includes('milo') || 
-                                   isNescafe;
-
-                  return (
-                    <tr
-                      key={beverage.id}
-                      className={`transition-colors duration-150 ${
-                        hasChanges
-                          ? isDarkMode
-                            ? "bg-yellow-900/20"
-                            : "bg-yellow-50"
-                          : isHotDrink
-                          ? isDarkMode
-                            ? "bg-orange-900/10 hover:bg-orange-800/20"
-                            : "bg-orange-50/50 hover:bg-orange-100/50"
-                          : isDarkMode
-                          ? "bg-blue-900/10 hover:bg-blue-800/20"
-                          : "bg-blue-50/50 hover:bg-blue-100/50"
-                      }`}
-                    >
-                      <td className="px-3 py-3 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              isNescafe
-                                ? isDarkMode
-                                  ? "bg-orange-900 text-orange-200"
-                                  : "bg-orange-100 text-orange-800"
-                                : beverage.name.toLowerCase().includes('tea')
-                                ? isDarkMode
-                                ? "bg-green-900 text-green-200"
-                                : "bg-green-100 text-green-800"
-                                : isDarkMode
-                                ? "bg-blue-900 text-blue-200"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
-                          >
-                            {isNescafe 
-                              ? "☕ Nescafe" 
-                              : beverage.name === "Nestea" 
-                              ? "🧊 Nestea"
-                              : beverage.name.toLowerCase().includes('tea')
-                              ? `🍵 ${beverage.name}`
-                              : beverage.name.toLowerCase().includes('coffee') || beverage.name.toLowerCase().includes('milo')
-                              ? `☕ ${beverage.name}`
-                              : beverage.name.toLowerCase().includes('juice')
-                              ? `🧃 ${beverage.name}`
-                              : `🥤 ${beverage.name}`}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-3 py-3 text-xs text-center">
-                        {currentPrice !== null ? (
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              isDarkMode
-                                ? "bg-green-900/50 text-green-300"
-                                : "bg-green-100 text-green-800"
-                            }`}
-                          >
-                            Rs. {currentPrice.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span
-                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              isDarkMode
-                                ? "bg-red-900/50 text-red-300"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            Not Set
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3 text-xs text-center">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={
-                            editingPrice
-                              ? editingPrice.price
-                              : currentPrice || ""
-                          }
-                          onChange={(e) =>
-                            handleBeveragePriceEdit(beverage.name, e.target.value)
-                          }
-                          className={`w-24 text-center border rounded px-2 py-1 text-xs focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors duration-300 ${
-                            hasChanges
-                              ? isDarkMode
-                                ? "border-yellow-500 bg-yellow-900/20 text-yellow-200"
-                                : "border-yellow-400 bg-yellow-50"
-                              : isDarkMode
-                              ? "border-purple-600 bg-purple-900/10 text-purple-200"
-                              : "border-purple-300 bg-purple-50/50"
-                          }`}
-                          placeholder="0.00"
-                        />
-                      </td>
-
-                      <td className="px-3 py-3 text-xs text-center">
-                        <div className="flex justify-center gap-1 flex-wrap">
-                          {/* Edit Beverage Button */}
-                          <button
-                            onClick={() => {
-                              const newName = prompt(`Edit beverage name:`, beverage.name);
-                              if (newName && newName.trim() && newName.trim() !== beverage.name) {
-                                // You could implement beverage editing logic here
-                                addToast("Beverage editing functionality coming soon!", 'info');
-                              }
-                            }}
-                            className={`px-2 py-1 rounded transition-colors text-xs font-medium min-w-[50px] ${
-                              isDarkMode
-                                ? "bg-blue-700 hover:bg-blue-600 text-white border border-blue-600"
-                                : "bg-blue-600 hover:bg-blue-700 text-white border border-blue-500"
-                            }`}
-                            title="Edit beverage name"
-                          >
-                            ✏️ Edit
-                          </button>
-
-                          {/* Delete Beverage Button */}
-                          <button
-                            onClick={async () => {
-                              if (window.confirm(`Are you sure you want to delete "${beverage.name}"? This will also delete its price if it exists.`)) {
-                                try {
-                                  // Find the beverage document to delete
-                                  const beverageToDelete = beverageData.find(item => item.itemName === beverage.name);
-                                  if (beverageToDelete) {
-                                    await deleteDoc(doc(firestore, "beverageInventory", beverageToDelete.id));
-                                    
-                                    // Also delete its price if it exists
-                                    const existingPrice = getBeveragePrice(beverage.name);
-                                    if (existingPrice.id) {
-                                      await deleteDoc(doc(firestore, "prices", existingPrice.id));
-                                    }
-                                    
-                                    await fetchPriceData();
-                                    addToast(`"${beverage.name}" deleted successfully!`, 'success');
-                                  }
-                                } catch (error) {
-                                  console.error("Error deleting beverage:", error);
-                                  addToast("Error deleting beverage. Please try again.", 'error');
-                                }
-                              }
-                            }}
-                            className={`px-2 py-1 rounded transition-colors text-xs font-medium min-w-[60px] ${
-                              isDarkMode
-                                ? "bg-red-700 hover:bg-red-600 text-white border border-red-600"
-                                : "bg-red-600 hover:bg-red-700 text-white border border-red-500"
-                            }`}
-                            title="Delete entire beverage"
-                          >
-                            🗑️ Delete
-                          </button>
-
-                          {/* Clear Price Button - Only show if beverage has a price */}
-                          {currentPrice !== null && (
-                            <button
-                              onClick={() => handleDeletePrice(beverage.name)}
-                              className={`px-2 py-1 rounded text-xs font-medium transition-colors min-w-[70px] ${
-                                isDarkMode
-                                  ? "bg-orange-700 hover:bg-orange-600 text-white border border-orange-600"
-                                  : "bg-orange-600 hover:bg-orange-700 text-white border border-orange-500"
-                              }`}
-                              title="Clear price only"
-                            >
-                              🚫 Clear Price
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Add New Beverage Section */}
-        <section
-          id="add-beverage-section"
-          className={`backdrop-blur-sm rounded-lg shadow-md border p-4 mb-4 transition-colors duration-300 ${
-            isDarkMode
-              ? "bg-gradient-to-r from-orange-900/40 to-blue-900/40 border-orange-700/30"
-              : "bg-gradient-to-r from-orange-50/60 to-blue-50/60 border-orange-200/30"
-          }`}
-        >
-          <h3 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${
-            isDarkMode ? "text-orange-200" : "text-orange-800"
-          }`}>
-            🥤 Add New Beverage
-          </h3>
-          <p className={`text-xs mb-3 ${
-            isDarkMode ? "text-orange-400" : "text-orange-600"
-          }`}>
-          </p>
-          
-          <div className="flex gap-2">
-            <input
-              id="new-beverage-input"
-              type="text"
-              value={newBeverageName}
-              onChange={(e) => setNewBeverageName(e.target.value)}
-              placeholder="Enter new beverage name (e.g., Orange Juice, Coffee)"
-              className={`flex-1 border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200 ${
-                isDarkMode
-                  ? "bg-orange-900/20 border-orange-600 text-orange-100 placeholder-orange-400"
-                  : "bg-white border-orange-300 text-orange-900 placeholder-orange-500"
-              }`}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleAddBeverage();
-                }
-              }}
-            />
-            <button
-              onClick={handleAddBeverage}
-              disabled={!newBeverageName.trim()}
-              className={`px-4 py-2 rounded-md transition-colors text-sm font-medium ${
-                !newBeverageName.trim()
-                  ? isDarkMode
-                    ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : isDarkMode
-                  ? "bg-orange-600 hover:bg-orange-500 text-white"
-                  : "bg-orange-500 hover:bg-orange-600 text-white"
-              }`}
-            >
-              ➕ Add Beverage
-            </button>
-          </div>
-          
-          <div className={`mt-2 text-xs ${
-            isDarkMode ? "text-orange-400" : "text-orange-600"
-          }`}>
-          </div>
-        </section>
-
         {/* Footer */}
         <footer
           className={`text-center mt-6 py-4 text-xs ${
@@ -1954,11 +1408,12 @@ export default function AddPricePage({ onNavigate }) {
         >
           <p>Mahajana Bakery - Price Management System</p>
           <p className="mt-1">
-            Bakery Items: {BAKERY_ITEMS.length} | Priced: {totalItemsWithPrices} | 
-            Beverages: {BEVERAGE_ITEMS.length} | Priced: {totalBeveragesWithPrices} | 
-            Unsaved Changes: {totalEditingPrices + totalEditingBeveragePrices}
+            Shop: {selectedShop} | Total Items: {BAKERY_ITEMS.length} | Priced
+            Items: {totalItemsWithPrices} | Unsaved Changes:{" "}
+            {totalEditingPrices}
           </p>
         </footer>
+      </div>
       </div>
     </div>
   );

@@ -11,8 +11,26 @@ import {
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { getDoc } from "firebase/firestore";
+import backgroundImage from "../image/background.jpeg";
 
-const CATEGORIES = ["Beverages", "Bakery"];
+const SHOPS = [
+  "හතරමන් හන්දිය",
+  "පොල හන්දිය",
+  "කොට්ටාව",
+  "හොමාගම",
+  "හබරකඩ",
+  "AAI- Three wheel",
+  "YW- Three wheel",
+  "ABD- Three wheel",
+  "ABB- Three wheel",
+  "AAQ- Three wheel",
+  "S M බේකර්ස්",
+];
+
+const BEVERAGES = [
+  "Nescafe",
+  "Nestea"
+];
 
 // Toast notification component
 const Toast = ({ toast, onRemove, isDarkMode }) => {
@@ -42,8 +60,8 @@ const Toast = ({ toast, onRemove, isDarkMode }) => {
       default:
         return `${baseStyles} ${
           isDarkMode 
-            ? "bg-primary-900/30 border-primary-700/50 text-primary-300" 
-            : "bg-primary-50 border-primary-200 text-primary-800"
+            ? "bg-blue-900/30 border-blue-700/50 text-blue-300" 
+            : "bg-blue-50 border-blue-200 text-blue-800"
         }`;
     }
   };
@@ -93,11 +111,11 @@ const Toast = ({ toast, onRemove, isDarkMode }) => {
 };
 
 export default function SelectionPage() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [inventoryData, setInventoryData] = useState([]);
   const [beverageData, setBeverageData] = useState([]);
   const [priceData, setPriceData] = useState([]);
-  const [itemsData, setItemsData] = useState([]);
+  const [shopItemsData, setShopItemsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [editedItems, setEditedItems] = useState(new Set());
@@ -108,8 +126,6 @@ export default function SelectionPage() {
   const [beverageChanges, setBeverageChanges] = useState({});
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [newItemName, setNewItemName] = useState("");
-  const [showAddBeverageModal, setShowAddBeverageModal] = useState(false);
-  const [newBeverageName, setNewBeverageName] = useState("");
   // Toast notifications state
   const [toasts, setToasts] = useState([]);
 
@@ -126,6 +142,7 @@ export default function SelectionPage() {
   }, []);
 
   const [filters, setFilters] = useState({
+    shop: SHOPS[0],
     date: new Date().toISOString().split("T")[0],
   });
 
@@ -143,25 +160,26 @@ export default function SelectionPage() {
     setIsDarkMode((prev) => !prev);
   }, []);
 
-  const getBakeryItems = useCallback(() => {
+  const getBakeryItemsForShop = useCallback((shop) => {
     try {
-      // Get all unique bakery items from itemsData
-      const allItems = itemsData
+      // Get all items for the shop and sort them by order field
+      const shopSpecificItems = shopItemsData
+        .filter(item => item.shop === shop)
         .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .map(item => item.itemName);
-      
-      // Remove duplicates
-      return [...new Set(allItems)];
+        .map(item => item.itemName)
+        // Exclude beverages from bakery items
+        .filter(itemName => !BEVERAGES.includes(itemName));
+      return [...new Set(shopSpecificItems)];
     } catch (error) {
-      console.error("Error getting bakery items:", error);
-      showToast("Error loading items", "error");
+      console.error("Error getting bakery items for shop:", error);
+      showToast("Error loading items for shop", "error");
       return [];
     }
-  }, [itemsData, showToast]);
+  }, [shopItemsData, showToast]);
 
   const BAKERY_ITEMS = useMemo(() => {
-    return getBakeryItems();
-  }, [getBakeryItems]);
+    return getBakeryItemsForShop(filters.shop);
+  }, [getBakeryItemsForShop, filters.shop]);
 
   const navigateDate = useCallback((days) => {
     try {
@@ -179,12 +197,11 @@ export default function SelectionPage() {
     }
   }, [filters.date]);
 
-  const getItemPrice = useCallback((itemName) => {
+  const getItemPrice = useCallback((itemName, shop) => {
     try {
-      if (!itemName) return null;
-      // Get the first available price for this item (since we're not filtering by shop)
+      if (!itemName || !shop) return null;
       const priceRecord = priceData.find(
-        (price) => price.itemName === itemName
+        (price) => price.itemName === itemName && price.shop === shop
       );
       return priceRecord ? parseFloat(priceRecord.price) || 0 : null;
     } catch (error) {
@@ -193,20 +210,71 @@ export default function SelectionPage() {
     }
   }, [priceData]);
 
+  const getPreviousDayRemaining = useCallback((itemName, shop, currentDate) => {
+    try {
+      if (!itemName || !shop || !currentDate) return 0;
+
+      const currentDateObj = new Date(currentDate);
+      if (isNaN(currentDateObj.getTime())) return 0;
+      
+      const previousDate = new Date(currentDateObj);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previousDateStr = previousDate.toISOString().split("T")[0];
+
+      const previousDayData = inventoryData.find(
+        (item) =>
+          item.itemName === itemName &&
+          item.shop === shop &&
+          item.date === previousDateStr
+      );
+
+      return previousDayData ? parseInt(previousDayData.remainingInventory) || 0 : 0;
+    } catch (error) {
+      console.error("Error getting previous day remaining:", error);
+      return 0;
+    }
+  }, [inventoryData]);
+
+  const getPreviousDayBeverageCount = useCallback((itemName, shop, currentDate) => {
+    try {
+      if (!itemName || !shop || !currentDate) return 0;
+
+      const currentDateObj = new Date(currentDate);
+      if (isNaN(currentDateObj.getTime())) return 0;
+      
+      const previousDate = new Date(currentDateObj);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previousDateStr = previousDate.toISOString().split("T")[0];
+
+      const previousDayData = beverageData.find(
+        (item) =>
+          item.itemName === itemName &&
+          item.shop === shop &&
+          item.date === previousDateStr
+      );
+
+      return previousDayData ? parseInt(previousDayData.todayCount) || 0 : 0;
+    } catch (error) {
+      console.error("Error getting previous day beverage count:", error);
+      return 0;
+    }
+  }, [beverageData]);
+
   const completeTableData = useMemo(() => {
     try {
-      const { date } = filters;
-      if (!date) return [];
+      const { shop, date } = filters;
+      if (!shop || !date) return [];
 
       return BAKERY_ITEMS.map((itemName) => {
-        // For simplified structure, we'll work with a general inventory approach
         const existingData = inventoryData.find(
-          (item) => item.itemName === itemName && item.date === date
+          (item) =>
+            item.itemName === itemName && item.shop === shop && item.date === date
         );
 
-        const itemKey = `${date}_${itemName}`;
+        const itemKey = `${shop}_${date}_${itemName}`;
         const sessionChange = sessionChanges[itemKey];
-        const itemPrice = getItemPrice(itemName);
+        const previousDayRemaining = getPreviousDayRemaining(itemName, shop, date);
+        const itemPrice = getItemPrice(itemName, shop);
 
         const morningTime = sessionChange && sessionChange.morningTime !== undefined
           ? parseInt(sessionChange.morningTime)
@@ -232,14 +300,16 @@ export default function SelectionPage() {
           ? parseInt(sessionChange.remainingInventory)
           : parseInt(existingData?.remainingInventory) || 0;
 
-        const startingInventory = morningTime + eveningTime + extraIn;
+        const startingInventory = previousDayRemaining + morningTime + eveningTime + extraIn;
         const selling = Math.max(0, startingInventory - remainingInventory - transferOut - discard);
         const totalValue = itemPrice !== null ? selling * itemPrice : null;
 
         return {
           id: itemKey,
           itemName,
+          shop,
           date,
+          previousDayRemaining,
           morningTime,
           eveningTime,
           extraIn,
@@ -261,39 +331,41 @@ export default function SelectionPage() {
       showToast("Error processing inventory data", "error");
       return [];
     }
-  }, [BAKERY_ITEMS, inventoryData, filters, sessionChanges, getItemPrice, showToast]);
+  }, [BAKERY_ITEMS, inventoryData, filters, getPreviousDayRemaining, sessionChanges, getItemPrice, showToast]);
 
   const completeBeverageData = useMemo(() => {
     try {
-      const { date } = filters;
-      if (!date) return [];
+      const { shop, date } = filters;
+      if (!shop || !date) return [];
 
-      // Get unique beverages from beverage data
-      const beverageItems = [...new Set(beverageData.map(item => item.itemName))];
-
-      return beverageItems.map((itemName) => {
+      return BEVERAGES.map((itemName) => {
         const existingData = beverageData.find(
-          (item) => item.itemName === itemName && item.date === date
+          (item) =>
+            item.itemName === itemName && item.shop === shop && item.date === date
         );
 
-        const itemKey = `${date}_${itemName}`;
+        const itemKey = `${shop}_${date}_${itemName}`;
         const sessionChange = beverageChanges[itemKey];
+        const previousDayCount = getPreviousDayBeverageCount(itemName, shop, date);
 
         const todayCount = sessionChange
           ? parseInt(sessionChange.todayCount) || 0
           : parseInt(existingData?.todayCount) || 0;
 
-        // Simplified selling calculation without previous day dependency
-        const selling = todayCount;
+        // Selling calculation: Today Count - Previous Day Count
+        const selling = Math.max(0, todayCount - previousDayCount);
 
         // Get price for this beverage item
-        const itemPrice = getItemPrice(itemName);
+        const itemPrice = getItemPrice(itemName, shop);
         const totalValue = itemPrice !== null ? selling * itemPrice : null;
+
 
         return {
           id: itemKey,
           itemName,
+          shop,
           date,
+          previousDayCount,
           todayCount,
           selling,
           price: itemPrice,
@@ -308,7 +380,7 @@ export default function SelectionPage() {
       showToast("Error processing beverage data", "error");
       return [];
     }
-  }, [beverageData, filters, beverageChanges, getItemPrice, showToast]);
+  }, [BEVERAGES, beverageData, filters, getPreviousDayBeverageCount, beverageChanges, showToast]);
 
   const itemsWithMissingPrices = useMemo(() => {
     try {
@@ -364,6 +436,7 @@ export default function SelectionPage() {
       const inventoryRef = collection(firestore, "inventory");
       const beverageRef = collection(firestore, "beverages");
       const pricesRef = collection(firestore, "prices");
+      const shopItemsRef = collection(firestore, "shopItems");
 
       let inventoryItems = [];
       try {
@@ -421,23 +494,22 @@ export default function SelectionPage() {
         showToast("Warning: Could not load price data", "warning");
       }
 
-      let items = [];
+      let shopItems = [];
       try {
-        const itemsRef = collection(firestore, "items");
-        const itemsSnapshot = await getDocs(itemsRef);
-        items = itemsSnapshot.docs.map((doc) => ({
+        const shopItemsSnapshot = await getDocs(shopItemsRef);
+        shopItems = shopItemsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-      } catch (itemsError) {
-        console.warn("Failed to fetch items:", itemsError);
-        showToast("Warning: Could not load items data", "warning");
+      } catch (shopItemsError) {
+        console.warn("Failed to fetch shop items:", shopItemsError);
+        showToast("Warning: Could not load shop items data", "warning");
       }
 
       setInventoryData(inventoryItems);
       setBeverageData(beverageItems);
       setPriceData(priceItems);
-      setItemsData(items);
+      setShopItemsData(shopItems);
       showToast("Data loaded successfully", "success");
 
     } catch (error) {
@@ -452,7 +524,7 @@ export default function SelectionPage() {
       setInventoryData([]);
       setBeverageData([]);
       setPriceData([]);
-      setItemsData([]);
+      setShopItemsData([]);
       showToast(errorMessage, "error");
     } finally {
       setLoading(false);
@@ -474,7 +546,7 @@ export default function SelectionPage() {
       setSessionChanges({});
       setBeverageChanges({});
       setHasUnsavedChanges(false);
-      showToast(`Date changed successfully`, "info");
+      showToast(`${field === 'shop' ? 'Shop' : 'Date'} changed successfully`, "info");
     } catch (error) {
       console.error("Error handling filter change:", error);
       showToast("Error updating filters", "error");
@@ -513,7 +585,9 @@ export default function SelectionPage() {
         updated.startingInventory = startingInventory;
         updated.selling = selling;
         updated.itemName = currentItem.itemName;
+        updated.shop = currentItem.shop;
         updated.date = currentItem.date;
+        updated.previousDayRemaining = currentItem.previousDayRemaining;
         updated.firestoreId = currentItem.firestoreId;
 
         return {
@@ -554,14 +628,16 @@ export default function SelectionPage() {
         const selling = Math.max(0, todayCount - currentItem.previousDayCount);
 
         // Calculate price and total value
-        const itemPrice = getItemPrice(currentItem.itemName);
+        const itemPrice = getItemPrice(currentItem.itemName, currentItem.shop);
         const totalValue = itemPrice !== null ? selling * itemPrice : null;
 
         updated.selling = selling;
         updated.price = itemPrice;
         updated.totalValue = totalValue;
         updated.itemName = currentItem.itemName;
+        updated.shop = currentItem.shop;
         updated.date = currentItem.date;
+        updated.previousDayCount = currentItem.previousDayCount;
         updated.firestoreId = currentItem.firestoreId;
 
         return {
@@ -585,27 +661,31 @@ export default function SelectionPage() {
         return;
       }
 
-      const currentItems = getBakeryItems();
-      if (currentItems.includes(newItemName.trim())) {
-        showToast("This item already exists", "warning");
+      const currentShopItems = getBakeryItemsForShop(filters.shop);
+      if (currentShopItems.includes(newItemName.trim())) {
+        showToast("This item already exists for this shop", "warning");
         return;
       }
 
       setSubmitting(true);
       
-      // Get the highest order number
-      const maxOrder = itemsData.length > 0 
-        ? Math.max(...itemsData.map(item => item.order || 0)) 
+      // Get the highest order number for the current shop
+      const shopSpecificItems = shopItemsData
+        .filter(item => item.shop === filters.shop);
+      const maxOrder = shopSpecificItems.length > 0 
+        ? Math.max(...shopSpecificItems.map(item => item.order || 0)) 
         : 0;
 
-      const itemsRef = collection(firestore, "items");
-      await addDoc(itemsRef, {
+      const shopItemsRef = collection(firestore, "shopItems");
+      await addDoc(shopItemsRef, {
+        shop: filters.shop,
         itemName: newItemName.trim(),
         order: maxOrder + 1,
         createdAt: new Date().toISOString(),
       });
 
-      setItemsData(prev => [...prev, {
+      setShopItemsData(prev => [...prev, {
+        shop: filters.shop,
         itemName: newItemName.trim(),
         order: maxOrder + 1,
         createdAt: new Date().toISOString(),
@@ -614,7 +694,7 @@ export default function SelectionPage() {
       setNewItemName("");
       setShowAddItemModal(false);
       
-      showToast(`Item "${newItemName.trim()}" added successfully`, "success");
+      showToast(`Item "${newItemName.trim()}" added to ${filters.shop}`, "success");
     } catch (error) {
       console.error("Error adding item:", error);
       const errorMessage = error.code === "permission-denied"
@@ -624,44 +704,7 @@ export default function SelectionPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [newItemName, getBakeryItems, itemsData, showToast]);
-
-  const handleAddBeverage = useCallback(async () => {
-    try {
-      if (!newBeverageName.trim()) {
-        showToast("Please enter a beverage name", "warning");
-        return;
-      }
-
-      // Check if beverage already exists
-      const existingBeverages = [...new Set(beverageData.map(item => item.itemName))];
-      if (existingBeverages.includes(newBeverageName.trim())) {
-        showToast("This beverage already exists", "warning");
-        return;
-      }
-
-      setSubmitting(true);
-
-      // Add to beverageData state (in real app, you might want to save to Firebase)
-      const newBeverageEntry = {
-        itemName: newBeverageName.trim(),
-        date: filters.date,
-        todayCount: 0,
-        createdAt: new Date().toISOString(),
-      };
-
-      setBeverageData(prev => [...prev, newBeverageEntry]);
-      setNewBeverageName("");
-      setShowAddBeverageModal(false);
-      
-      showToast(`Beverage "${newBeverageName.trim()}" added successfully`, "success");
-    } catch (error) {
-      console.error("Error adding beverage:", error);
-      showToast("Failed to add beverage", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  }, [newBeverageName, beverageData, filters.date, showToast]);
+  }, [newItemName, filters.shop, getBakeryItemsForShop, shopItemsData, showToast]);
 
   const handleSaveChanges = useCallback(async () => {
     try {
@@ -729,7 +772,9 @@ export default function SelectionPage() {
               // Only update fields present in changes, preserve others
               const dataToSave = {
                 date: changes.date ?? mergedData.date,
+                shop: changes.shop ?? mergedData.shop,
                 itemName: changes.itemName ?? mergedData.itemName,
+                previousDayRemaining: changes.previousDayRemaining !== undefined ? parseInt(changes.previousDayRemaining) : mergedData.previousDayRemaining ?? 0,
                 morningTime: changes.morningTime !== undefined ? parseInt(changes.morningTime) : mergedData.morningTime ?? 0,
                 eveningTime: changes.eveningTime !== undefined ? parseInt(changes.eveningTime) : mergedData.eveningTime ?? 0,
                 extraIn: changes.extraIn !== undefined ? parseInt(changes.extraIn) : mergedData.extraIn ?? 0,
@@ -765,7 +810,9 @@ export default function SelectionPage() {
             try {
               const dataToSave = {
                 date: changes.date,
+                shop: changes.shop,
                 itemName: changes.itemName,
+                previousDayCount: parseInt(changes.previousDayCount) || 0,
                 todayCount: parseInt(changes.todayCount) || 0,
                 selling: parseInt(changes.selling) || 0,
                 price: parseFloat(changes.price) || null,
@@ -817,12 +864,24 @@ export default function SelectionPage() {
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-300 ${
-        isDarkMode
-          ? "bg-gradient-to-br from-primary-900 via-secondary-900 to-accent-900"
-          : "bg-gradient-to-br from-primary-50 via-secondary-50 to-accent-50"
-      }`}
+      className="min-h-screen transition-colors duration-300"
+      style={{
+        backgroundImage: `url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'fixed'
+      }}
     >
+      {/* Gradient overlay for better content visibility */}
+      <div
+        className={`absolute inset-0 transition-colors duration-300 ${
+          isDarkMode
+            ? "bg-gradient-to-br from-slate-900/80 via-gray-900/85 to-slate-800/80"
+            : "bg-gradient-to-br from-gray-50/85 via-slate-50/90 to-blue-50/85"
+        }`}
+      ></div>
+      <div className={`relative z-10 ${isDarkMode ? "text-white" : "text-gray-900"}`}>
       {/* Toast Notifications Container */}
       <div className="toast-container">
         {toasts.map((toast, index) => (
@@ -843,17 +902,17 @@ export default function SelectionPage() {
               onClick={() => navigate("/")}
               className={`px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm ${
                 isDarkMode
-                  ? "bg-secondary-800/70 hover:bg-secondary-700 text-secondary-200 border border-secondary-700"
-                  : "bg-white/70 hover:bg-secondary-100 text-secondary-700 border border-secondary-200 shadow-sm"
+                  ? "bg-slate-700/70 hover:bg-slate-600 text-slate-200 border border-slate-600"
+                  : "bg-white/70 hover:bg-gray-100 text-gray-700 border border-gray-200 shadow-sm"
               }`}
             >
               ← Back
             </button>
             <h1
-              className={`text-2xl md:text-3xl font-bold bg-gradient-to-r ${
+              className={`text-3xl md:text-3xl font-bold bg-gradient-to-r ${
                 isDarkMode
-                  ? "from-primary-400 to-accent-400"
-                  : "from-primary-600 to-accent-600"
+                  ? "from-blue-400 to-cyan-400"
+                  : "from-blue-600 to-indigo-600"
               } bg-clip-text text-transparent`}
             >
               Mahajana Bakery
@@ -862,8 +921,8 @@ export default function SelectionPage() {
               onClick={toggleDarkMode}
               className={`p-2 rounded-lg transition-all duration-300 ${
                 isDarkMode
-                  ? "bg-primary-500/20 hover:bg-primary-400/30 text-primary-400 border border-primary-500/30"
-                  : "bg-secondary-800/10 hover:bg-secondary-700/20 text-secondary-700 border border-secondary-300"
+                  ? "bg-yellow-500/20 hover:bg-yellow-400/30 text-yellow-400 border border-yellow-500/30"
+                  : "bg-gray-800/10 hover:bg-gray-700/20 text-gray-700 border border-gray-300"
               } shadow-sm hover:shadow-md transform hover:scale-105`}
               title={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
             >
@@ -872,10 +931,10 @@ export default function SelectionPage() {
           </div>
           <p
             className={`text-sm ${
-              isDarkMode ? "text-primary-300" : "text-secondary-700"
+              isDarkMode ? "text-slate-400" : "text-gray-600"
             }`}
           >
-            Traditional bakery inventory management
+            Daily inventory management
           </p>
         </header>
 
@@ -912,7 +971,7 @@ export default function SelectionPage() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => navigate("/addPrice")}
-              className="px-4 py-2 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white rounded-lg transition-all duration-200 font-medium shadow-md hover:shadow-lg text-sm"
+              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg transition-all duration-200 font-medium shadow-md hover:shadow-lg text-sm"
             >
               🏷 Prices
             </button>
@@ -944,9 +1003,36 @@ export default function SelectionPage() {
               isDarkMode ? "text-slate-200" : "text-gray-800"
             }`}
           >
-            📅 Date Selection
+            🏪 Shop & Date
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <div>
+              <label
+                htmlFor="shop-filter"
+                className={`block text-xs font-medium mb-1 ${
+                  isDarkMode ? "text-slate-300" : "text-gray-700"
+                }`}
+              >
+                Shop:
+              </label>
+              <select
+                id="shop-filter"
+                value={filters.shop}
+                onChange={(e) => handleFilterChange("shop", e.target.value)}
+                className={`w-full border rounded-md px-2 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                  isDarkMode
+                    ? "bg-gray-700/70 border-gray-600 text-slate-200"
+                    : "bg-white border-gray-300 text-gray-700"
+                }`}
+              >
+                {SHOPS.map((shop) => (
+                  <option key={shop} value={shop}>
+                    {shop}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label
                 htmlFor="date-filter"
@@ -1001,7 +1087,7 @@ export default function SelectionPage() {
                     new Date().toISOString().split("T")[0]
                   )
                 }
-                className="px-3 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-md transition-colors text-sm font-medium"
+                className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors text-sm font-medium"
               >
                 📅 Today
               </button>
@@ -1041,7 +1127,7 @@ export default function SelectionPage() {
               }`}
             >
               The following items have inventory data but missing prices for{" "}
-              Daily Summary:
+              {filters.shop}:
             </p>
             <div className="flex flex-wrap gap-2">
               {itemsWithMissingPrices.map((item) => (
@@ -1090,7 +1176,7 @@ export default function SelectionPage() {
                     isDarkMode ? "text-purple-200" : "text-purple-800"
                   }`}
                 >
-                  🥤 Beverages - {filters.date}
+                  🥤 Beverages - {filters.shop} - {filters.date}
                 </h2>
                 <p
                   className={`text-xs mt-1 ${
@@ -1111,16 +1197,6 @@ export default function SelectionPage() {
                   )}
                 </p>
               </div>
-              <button
-                onClick={() => setShowAddBeverageModal(true)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  isDarkMode
-                    ? "bg-purple-600 hover:bg-purple-500 text-white"
-                    : "bg-purple-500 hover:bg-purple-600 text-white"
-                }`}
-              >
-                + Add Beverage
-              </button>
             </div>
           </div>
 
@@ -1161,13 +1237,6 @@ export default function SelectionPage() {
                     Selling (Auto)
                   </th>
                   <th
-                    className={`px-2 py-2 text-center text-xs font-semibold min-w-[70px] ${
-                      isDarkMode ? "text-blue-300" : "text-blue-700"
-                    }`}
-                  >
-                    Remaining Count
-                  </th>
-                  <th
                     className={`px-2 py-2 text-center text-xs font-semibold min-w-[60px] ${
                       isDarkMode ? "text-amber-300" : "text-amber-700"
                     }`}
@@ -1190,7 +1259,7 @@ export default function SelectionPage() {
               >
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-6 text-center">
+                    <td colSpan="6" className="px-4 py-6 text-center">
                       <div className="flex flex-col items-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mb-2"></div>
                         <p
@@ -1307,23 +1376,6 @@ export default function SelectionPage() {
                           <td className="px-2 py-2 text-xs text-center">
                             <span
                               className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                beverageData.previousDayCount - beverageData.selling > 0
-                                  ? isDarkMode
-                                    ? "bg-blue-900/50 text-blue-300"
-                                    : "bg-blue-100 text-blue-800"
-                                  : isDarkMode
-                                  ? "bg-gray-700 text-gray-300"
-                                  : "bg-gray-100 text-gray-800"
-                              }`}
-                              title="Remaining: Previous Day Count - Selling"
-                            >
-                              {Math.max(0, beverageData.previousDayCount - beverageData.selling)}
-                            </span>
-                          </td>
-
-                          <td className="px-2 py-2 text-xs text-center">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 beverageData.price !== null
                                   ? isDarkMode
                                     ? "bg-amber-900/50 text-amber-300"
@@ -1383,7 +1435,7 @@ export default function SelectionPage() {
                     isDarkMode ? "text-slate-200" : "text-gray-800"
                   }`}
                 >
-                  🍞 Bakery - {filters.date}
+                  🍞 Bakery - {filters.shop} - {filters.date}
                 </h2>
                 <p
                   className={`text-xs mt-1 ${
@@ -1541,7 +1593,7 @@ export default function SelectionPage() {
                             isDarkMode ? "text-slate-400" : "text-slate-500"
                           }`}
                         >
-                          No items found
+                          No items found for {filters.shop}
                         </p>
                         <p
                           className={`text-sm mb-4 ${
@@ -1989,9 +2041,9 @@ export default function SelectionPage() {
             isDarkMode ? "text-slate-400" : "text-slate-600"
           }`}
         >
-          <p>T & S Bakery Inventory Management System</p>
+          <p>Mahajana Bakery Inventory Management System</p>
           <p className="mt-1">
-            Date: {filters.date} | Bakery Items: {BAKERY_ITEMS.length} | Changes: {editedItems.size + editedBeverages.size}
+            Selected: {filters.shop} | Date: {filters.date} | Bakery Items: {BAKERY_ITEMS.length} | Beverages: {BEVERAGES.length} | Changes: {editedItems.size + editedBeverages.size}
           </p>
         </footer>
       </div>
@@ -2011,7 +2063,7 @@ export default function SelectionPage() {
                 isDarkMode ? "text-slate-200" : "text-slate-800"
               }`}
             >
-              Add New Item
+              Add New Item to {filters.shop}
             </h3>
             <input
               type="text"
@@ -2054,65 +2106,7 @@ export default function SelectionPage() {
           </div>
         </div>
       )}
-
-      {/* Add Beverage Modal */}
-      {showAddBeverageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div
-            className={`rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 ${
-              isDarkMode
-                ? "bg-gray-800 border border-gray-700"
-                : "bg-white border border-gray-200"
-            }`}
-          >
-            <h3
-              className={`text-xl font-semibold mb-4 ${
-                isDarkMode ? "text-slate-200" : "text-slate-800"
-              }`}
-            >
-              Add New Beverage
-            </h3>
-            <input
-              type="text"
-              value={newBeverageName}
-              onChange={(e) => setNewBeverageName(e.target.value)}
-              placeholder="Enter beverage name"
-              className={`w-full border rounded-lg px-3 py-2.5 mb-4 focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
-                isDarkMode
-                  ? "bg-gray-700 border-gray-600 text-slate-200"
-                  : "bg-white border-slate-300"
-              }`}
-              onKeyPress={(e) => {
-                if (e.key === "Enter" && !submitting) {
-                  handleAddBeverage();
-                }
-              }}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={handleAddBeverage}
-                disabled={submitting || !newBeverageName.trim()}
-                className="flex-1 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white px-4 py-2.5 rounded-lg transition-colors font-medium"
-              >
-                {submitting ? "Adding..." : "Add Beverage"}
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddBeverageModal(false);
-                  setNewBeverageName("");
-                }}
-                className={`flex-1 px-4 py-2.5 rounded-lg transition-colors font-medium ${
-                  isDarkMode
-                    ? "bg-gray-700 hover:bg-gray-600 text-slate-300"
-                    : "bg-gray-200 hover:bg-gray-300 text-slate-700"
-                }`}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

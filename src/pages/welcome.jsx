@@ -18,9 +18,14 @@ export default function Welcome() {
     <div
       className={`min-h-screen relative transition-colors duration-300 ${
         isDarkMode
-          ? "bg-gradient-to-br from-primary-900 via-secondary-900 to-accent-900 text-white"
-          : "bg-gradient-to-br from-primary-50 via-secondary-50 to-accent-50 text-gray-900"
+          ? "text-white"
+          : "text-gray-900"
       }`}
+      style={{
+        background: isDarkMode 
+          ? 'linear-gradient(to bottom right, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.8), rgba(51, 65, 85, 0.8))'
+          : 'linear-gradient(to bottom right, rgba(248, 250, 252, 0.8), rgba(241, 245, 249, 0.8), rgba(226, 232, 240, 0.8))'
+      }}
     >
       {/* Modern geometric background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -150,7 +155,7 @@ export default function Welcome() {
 
         {/* Main title with modern typography - EXTRA LARGE */}
         <div className="text-center mb-12 max-w-7xl w-full">
-          <h1 className={`text-8xl md:text-9xl lg:text-[12rem] xl:text-[14rem] font-black mb-8 leading-tight tracking-tight animate-fadeInUp ${
+          <h1 className={`text-8xl md:text-9xl lg:text-[12rem] xl:text-[12rem] font-black mb-8 leading-tight tracking-tight animate-fadeInUp ${
             isDarkMode
               ? "bg-gradient-mahajana-dark text-fill-transparent bg-clip-text drop-shadow-glow-blue"
               : "bg-gradient-mahajana-light text-fill-transparent bg-clip-text drop-shadow-glow-blue-light"
